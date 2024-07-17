@@ -1,10 +1,10 @@
 PC:
-  NAME: "rosie"
+  NAME: "ripl-d3"
   IP: localhost
 
 NUC:
   IP: localhost
-  NAME: "alice"
+  NAME: "ripl-d3"
   PUB_PORT: 5556
   SUB_PORT: 5555
   GRIPPER_PUB_PORT: 5558
