@@ -43,7 +43,7 @@ class IKWrapper:
             print("--------------------")
             print("Current eef (mat): ", current_mat)
             print("Predicted goal eef (mat): ", new_T[:3, :3])
-        
+
         target_positions = []
         target_mats = []
         # new_T_seq = [new_T_seq[-1]]
@@ -77,7 +77,7 @@ class IKWrapper:
         current_mat = np.copy(self.data.site(gripper_site_id).xmat).reshape(3, 3)
         target_pos = current_pos + delta_pos
         return self.ik_trajectory_to_target_position(target_pos, start_joint_positions, num_points, verbose)
-    
+
 
     def ik_trajectory_to_target_position(self, target_pos, start_joint_positions, num_points=100, verbose=True):
         # TODO: implement a version to reach a target rotation
@@ -108,7 +108,7 @@ class IKWrapper:
             "target_pos": target_pos
         }
         return predicted_joints_seq, debug_info
-    
+
     def simulate_joint_sequence(self, joint_sequence, loop=False, fps=30, render=True):
 
         recorded_pos = []
@@ -129,14 +129,14 @@ class IKWrapper:
                             viewer.sync()
                             time.sleep(1/fps)
                             gripper_site_id = self.model.site("grip_site").id
-                            
+
                             # mujoco.mj_fwdPosition(model, data)
                             current_pos = np.copy(self.data.site(gripper_site_id).xpos)
                             current_mat = np.copy(self.data.site(gripper_site_id).xmat).reshape(3, 3)
                             recorded_pos.append(current_pos)
                             recorded_mat.append(current_mat)
                         if not loop:
-                            break   
+                            break
         else:
             for joint_conf in joint_sequence:
                 self.data.qpos[:] = joint_conf.tolist() + [0.04] * 2

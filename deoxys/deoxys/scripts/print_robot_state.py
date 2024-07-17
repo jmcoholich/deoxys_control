@@ -54,7 +54,7 @@ def main():
 
             logger.info(f"Current eef position: ")
             pp.pprint([list(i)[0] for i in last_eef_pos])
-            
+
             break
     robot_interface.close()
 

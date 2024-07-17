@@ -30,14 +30,14 @@ def main():
     logger.debug("Second movement finished")
     position_only_gripper_move_by(robot_interface, delta_pos=[0.0, 0.0, 0.0], grasp=True)
     logger.debug("Third movement finished")
-    position_only_gripper_move_by(robot_interface, delta_pos=[0.0, 0.0, 0.22], grasp=True)    
+    position_only_gripper_move_by(robot_interface, delta_pos=[0.0, 0.0, 0.22], grasp=True)
     logger.debug("Forth movement finished")
     position_only_gripper_move_by(
         robot_interface, delta_pos=[-0.2, -0.05, 0.0], grasp=True
     )
     position_only_gripper_move_by(
         robot_interface, delta_pos=[0.0, 0.00, -0.10], grasp=True
-    )    
+    )
     logger.debug("Final movement finished")
     position_only_gripper_move_by(
         robot_interface, delta_pos=[0.0, 0.0, 0.0], grasp=False

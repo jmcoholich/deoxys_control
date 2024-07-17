@@ -84,7 +84,7 @@ def main():
     ik_wrapper.simulate_joint_sequence(joint_traj)
 
     execute_ik_result(robot_interface, controller_type, controller_cfg, joint_traj)
-    
-    
+
+
 if __name__ == "__main__":
     main()
