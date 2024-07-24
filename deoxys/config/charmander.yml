@@ -1,6 +1,6 @@
 PC:
   NAME: "ripl-d3"
-  IP: localhost
+  IP: 172.16.0.1
 
 NUC:
   NAME: "ripl-nuc"
