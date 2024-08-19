@@ -14,6 +14,9 @@ from deoxys.utils import transform_utils
 from deoxys.utils.config_utils import verify_controller_config
 from deoxys.utils.yaml_config import YamlConfig
 
+import random
+import socket
+
 logger = logging.getLogger(__name__)
 
 
@@ -103,6 +106,25 @@ class FrankaInterface:
         self._gripper_subscriber = self._context.socket(zmq.SUB)
 
         # publisher
+
+        # reassign ports that are "random"
+        ports = [self._pub_port, self._sub_port, self._gripper_pub_port, self._gripper_sub_port]
+        for i in range(len(ports)):
+            if ports[i] == "random":
+                ports[i] = random.randint(10000, 60000)
+        self._pub_port, self._sub_port, self._gripper_pub_port, self._gripper_sub_port = ports
+
+        print()
+        print('&'*100)
+        hostname = socket.gethostname()
+        print("Hostname of the machine:", hostname)
+        print("nuc_sub_port", self._pub_port)
+        print("nuc_pub_port", self._sub_port)
+        print("gripper_sub_port", self._gripper_pub_port)
+        print("gripper_pub_port", self._gripper_sub_port)
+        print("my ip", self._ip)
+        print('&'*100)
+        print()
         self._publisher.bind(f"tcp://*:{self._pub_port}")
         self._gripper_publisher.bind(f"tcp://*:{self._gripper_pub_port}")
 
@@ -267,8 +289,9 @@ class FrankaInterface:
         exponential_estimator.alpha_dq = controller_cfg.state_estimator_cfg.alpha_dq
         exponential_estimator.alpha_eef = controller_cfg.state_estimator_cfg.alpha_eef
         state_estimator_msg.config.Pack(exponential_estimator)
-
-        if controller_type == "OSC_POSE":
+        print("CONTROLLER_TYPE", controller_type)
+        print('is delta: ', controller_cfg.is_delta)
+        if controller_type == "OSC_POSE":  # This is the controller type
             assert controller_cfg is not None
 
             osc_msg = franka_controller_pb2.FrankaOSCPoseControllerMessage()
@@ -479,8 +502,8 @@ class FrankaInterface:
             msg_str = control_msg.SerializeToString()
             self._publisher.send(msg_str)
 
-        if self.has_gripper:
-            self.gripper_control(action[self.last_gripper_dim])
+        # if self.has_gripper:
+        #     self.gripper_control(action[self.last_gripper_dim])
 
         if self.use_visualizer and len(self._state_buffer) > 0:
             self.visualizer.update(joint_positions=np.array(self._state_buffer[-1].q))
