@@ -88,6 +88,7 @@ class FrankaInterface:
         has_gripper: bool = True,
         use_visualizer: bool = False,
         automatic_gripper_reset: bool=True,
+        listen_only: bool = False,
     ):
         general_cfg = YamlConfig(general_cfg_file).as_easydict()
         self._name = general_cfg.PC.NAME
@@ -105,14 +106,16 @@ class FrankaInterface:
         self._gripper_publisher = self._context.socket(zmq.PUB)
         self._gripper_subscriber = self._context.socket(zmq.SUB)
 
+        self._gripper_cmd_subscriber = self._context.socket(zmq.SUB)
+
         # publisher
 
-        # reassign ports that are "random"
-        ports = [self._pub_port, self._sub_port, self._gripper_pub_port, self._gripper_sub_port]
-        for i in range(len(ports)):
-            if ports[i] == "random":
-                ports[i] = random.randint(10000, 60000)
-        self._pub_port, self._sub_port, self._gripper_pub_port, self._gripper_sub_port = ports
+        # # reassign ports that are "random"
+        # ports = [self._pub_port, self._sub_port, self._gripper_pub_port, self._gripper_sub_port]
+        # for i in range(len(ports)):
+        #     if ports[i] == "random":
+        #         ports[i] = random.randint(10000, 60000)
+        # self._pub_port, self._sub_port, self._gripper_pub_port, self._gripper_sub_port = ports
 
         print()
         print('&'*100)
@@ -125,21 +128,30 @@ class FrankaInterface:
         print("my ip", self._ip)
         print('&'*100)
         print()
-        self._publisher.bind(f"tcp://*:{self._pub_port}")
-        self._gripper_publisher.bind(f"tcp://*:{self._gripper_pub_port}")
 
-        # subscriber
-        self._subscriber.setsockopt_string(zmq.SUBSCRIBE, "")
-        self._subscriber.connect(f"tcp://{self._ip}:{self._sub_port}")
+        if not listen_only:
+            self._publisher.bind(f"tcp://*:{self._pub_port}")
+            self._gripper_publisher.bind(f"tcp://*:{self._gripper_pub_port}")
 
-        self._gripper_subscriber.setsockopt_string(zmq.SUBSCRIBE, "")
-        self._gripper_subscriber.connect(f"tcp://{self._ip}:{self._gripper_sub_port}")
+        else:
+            # subscriber
+            self._subscriber.setsockopt_string(zmq.SUBSCRIBE, "")
+            self._subscriber.connect(f"tcp://{self._ip}:{self._sub_port}")
+
+            self._gripper_subscriber.setsockopt_string(zmq.SUBSCRIBE, "")
+            self._gripper_subscriber.connect(f"tcp://{self._ip}:{self._gripper_sub_port}")
+
+            self._gripper_cmd_subscriber.setsockopt_string(zmq.SUBSCRIBE, "")
+            # self._gripper_cmd_subscriber.connect(f"tcp://{general_cfg.PC.IP}:{self._gripper_pub_port}")
+            self._gripper_cmd_subscriber.connect(f"tcp://localhost:{self._gripper_pub_port}")
 
         self._state_buffer = []
         self._state_buffer_idx = 0
 
         self._gripper_state_buffer = []
         self._gripper_buffer_idx = 0
+
+        self._gripper_cmd_buffer = []
 
         # control frequency
         self._control_freq = control_freq
@@ -154,13 +166,18 @@ class FrankaInterface:
         self.counter = 0
         self.termination = False
 
-        self._state_sub_thread = threading.Thread(target=self.get_state)
-        self._state_sub_thread.daemon = True
-        self._state_sub_thread.start()
+        if listen_only:
+            self._state_sub_thread = threading.Thread(target=self.get_state)
+            self._state_sub_thread.daemon = True
+            self._state_sub_thread.start()
 
-        self._gripper_sub_thread = threading.Thread(target=self.get_gripper_state)
-        self._gripper_sub_thread.daemon = True
-        self._gripper_sub_thread.start()
+            self._gripper_sub_thread = threading.Thread(target=self.get_gripper_state)
+            self._gripper_sub_thread.daemon = True
+            self._gripper_sub_thread.start()
+
+            self._gripper_cmd_sub_thread = threading.Thread(target=self.get_gripper_cmd)
+            self._gripper_cmd_sub_thread.daemon = True
+            self._gripper_cmd_sub_thread.start()
 
         self.last_time = None
 
@@ -213,6 +230,35 @@ class FrankaInterface:
                 self._gripper_state_buffer.append(franka_gripper_state)
             except:
                 pass
+
+    def get_gripper_cmd(self):
+        while True:
+            try:
+                franka_gripper_cmd = (
+                    franka_controller_pb2.FrankaGripperControlMessage()
+                )
+                msg = self._gripper_cmd_subscriber.recv()
+                decoded_msg = decode_gripper_msg(msg)
+                self._gripper_cmd_buffer.append(decoded_msg.width)
+            except:
+                pass
+
+    def decode_gripper_msg(self, msg):
+        franka_gripper_cmd = franka_controller_pb2.FrankaGripperControlMessage()
+        franka_gripper_cmd.ParseFromString(message)
+
+        # print("Decoded FrankaGripperControlMessage:", franka_gripper_cmd.control_msg)
+
+        # Try to unpack as a FrankaGripperMoveMessage
+        decoded_msg = franka_controller_pb2.FrankaGripperMoveMessage()
+        if not franka_gripper_cmd.control_msg.Unpack(move_msg):
+            # If not a move message, try to unpack as a FrankaGripperGraspMessage
+            decoded_msg = franka_controller_pb2.FrankaGripperGraspMessage()
+            success = franka_gripper_cmd.control_msg.Unpack(grasp_msg)
+            if not success:
+                raise ValueError("Failed to unpack gripper command message for logging demo")
+
+        return decoded_msg
 
     def preprocess(self):
 
@@ -601,6 +647,8 @@ class FrankaInterface:
 
         self._gripper_state_buffer = []
         self._gripper_buffer_idx = 0
+
+        self._gripper_cmd_buffer = []
 
         self.counter = 0
         self.termination = False
