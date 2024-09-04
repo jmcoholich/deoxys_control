@@ -174,7 +174,7 @@ class FrankaInterface:
         self._last_controller_type = "Dummy"
 
         self.last_gripper_dim = -1
-        self.last_gripper_action = 0
+        self.last_gripper_action = None
 
         self.last_gripper_command_counter = 0
         self._history_actions = []
@@ -607,7 +607,7 @@ class FrankaInterface:
 
         self.last_time = None
         self.last_gripper_dim = -1
-        self.last_gripper_action = 0
+        self.last_gripper_action = None
         self.last_gripper_command_counter = 0
         self._history_actions = []
 
