@@ -1,3 +1,9 @@
+"""
+The default behavior of this class is to listen for state and send control messages.
+However, only one instance of this class can control the robot at a time. All others should pass the "no_control" flag to the constructor.
+If listening for commands is required, the "listen_cmds" flag should be set to True.
+"""
+
 import logging
 import threading
 import time
@@ -30,6 +36,16 @@ def action_to_osc_pose_goal(action, is_delta=True) -> franka_controller_pb2.Goal
     goal.ay = action[4]
     goal.az = action[5]
     return goal
+
+def osc_pose_goal_to_action(goal) -> np.array:
+    action = np.zeros(6)
+    action[0] = goal.x
+    action[1] = goal.y
+    action[2] = goal.z
+    action[3] = goal.ax
+    action[4] = goal.ay
+    action[5] = goal.az
+    return action
 
 def action_to_cartesian_velocity(action, is_delta=True) -> franka_controller_pb2.Goal:
     goal = franka_controller_pb2.Goal()
@@ -88,7 +104,8 @@ class FrankaInterface:
         has_gripper: bool = True,
         use_visualizer: bool = False,
         automatic_gripper_reset: bool=True,
-        listen_only: bool = False,
+        listen_cmds: bool = False,
+        no_control: bool = False,
     ):
         general_cfg = YamlConfig(general_cfg_file).as_easydict()
         self._name = general_cfg.PC.NAME
@@ -107,6 +124,7 @@ class FrankaInterface:
         self._gripper_subscriber = self._context.socket(zmq.SUB)
 
         self._gripper_cmd_subscriber = self._context.socket(zmq.SUB)
+        self._cmd_subscriber = self._context.socket(zmq.SUB)
 
         # publisher
 
@@ -126,24 +144,30 @@ class FrankaInterface:
         print("gripper_sub_port", self._gripper_pub_port)
         print("gripper_pub_port", self._gripper_sub_port)
         print("my ip", self._ip)
+        print("listen_cmds", listen_cmds)
+        print("no_control", no_control)
         print('&'*100)
         print()
 
-        if not listen_only:
-            self._publisher.bind(f"tcp://*:{self._pub_port}")
+        # subscriber
+        self._subscriber.setsockopt_string(zmq.SUBSCRIBE, "")
+        self._subscriber.connect(f"tcp://{self._ip}:{self._sub_port}")
+
+        self._gripper_subscriber.setsockopt_string(zmq.SUBSCRIBE, "")
+        self._gripper_subscriber.connect(f"tcp://{self._ip}:{self._gripper_sub_port}")
+
+        if not no_control:
             self._gripper_publisher.bind(f"tcp://*:{self._gripper_pub_port}")
+            self._publisher.bind(f"tcp://*:{self._pub_port}")
 
-        else:
-            # subscriber
-            self._subscriber.setsockopt_string(zmq.SUBSCRIBE, "")
-            self._subscriber.connect(f"tcp://{self._ip}:{self._sub_port}")
-
-            self._gripper_subscriber.setsockopt_string(zmq.SUBSCRIBE, "")
-            self._gripper_subscriber.connect(f"tcp://{self._ip}:{self._gripper_sub_port}")
-
+        if listen_cmds:
             self._gripper_cmd_subscriber.setsockopt_string(zmq.SUBSCRIBE, "")
             # self._gripper_cmd_subscriber.connect(f"tcp://{general_cfg.PC.IP}:{self._gripper_pub_port}")
             self._gripper_cmd_subscriber.connect(f"tcp://localhost:{self._gripper_pub_port}")
+
+            self._cmd_subscriber.setsockopt_string(zmq.SUBSCRIBE, "")
+            # self._cmd_subscriber.connect(f"tcp://{general_cfg.PC.IP}:{self._pub_port}")
+            self._cmd_subscriber.connect(f"tcp://localhost:{self._pub_port}")
 
         self._state_buffer = []
         self._state_buffer_idx = 0
@@ -152,6 +176,7 @@ class FrankaInterface:
         self._gripper_buffer_idx = 0
 
         self._gripper_cmd_buffer = []
+        self._cmd_buffer = []
 
         # control frequency
         self._control_freq = control_freq
@@ -166,18 +191,23 @@ class FrankaInterface:
         self.counter = 0
         self.termination = False
 
-        if listen_only:
-            self._state_sub_thread = threading.Thread(target=self.get_state)
-            self._state_sub_thread.daemon = True
-            self._state_sub_thread.start()
+        self._state_sub_thread = threading.Thread(target=self.get_state)
+        self._state_sub_thread.daemon = True
+        self._state_sub_thread.start()
 
-            self._gripper_sub_thread = threading.Thread(target=self.get_gripper_state)
-            self._gripper_sub_thread.daemon = True
-            self._gripper_sub_thread.start()
+        self._gripper_sub_thread = threading.Thread(target=self.get_gripper_state)
+        self._gripper_sub_thread.daemon = True
+        self._gripper_sub_thread.start()
 
+        if listen_cmds:
             self._gripper_cmd_sub_thread = threading.Thread(target=self.get_gripper_cmd)
             self._gripper_cmd_sub_thread.daemon = True
             self._gripper_cmd_sub_thread.start()
+
+            self._cmd_sub_thread = threading.Thread(target=self.get_cmd)
+            self._cmd_sub_thread.daemon = True
+            self._cmd_sub_thread.start()
+            self._cmd_metadata = None
 
         self.last_time = None
 
@@ -231,6 +261,69 @@ class FrankaInterface:
             except:
                 pass
 
+    def get_cmd(self):
+        while True:
+            try:
+                msg = self._cmd_subscriber.recv()
+                decoded_msg = self.decode_cmd_msg(msg)
+                self._cmd_buffer.append(decoded_msg)
+            except:
+                pass
+
+    def decode_cmd_msg(self, msg):
+        control_msg = franka_controller_pb2.FrankaControlMessage()
+        control_msg.ParseFromString(msg)
+
+        if control_msg.controller_type != franka_controller_pb2.FrankaControlMessage.ControllerType.OSC_POSE:
+            raise NotImplementedError("Only OSC_POSE controller is implemented for command logging")
+        # print("Controller Type:", control_msg.controller_type)
+        # print("Trajectory Interpolator Type:", control_msg.traj_interpolator_type)
+        # print("Trajectory Interpolator Time Fraction:", control_msg.traj_interpolator_time_fraction)
+        # print("Timeout:", control_msg.timeout)
+        # print("Termination:", control_msg.termination)
+
+        # Unpack the control message based on the controller type
+        osc_pose_msg = franka_controller_pb2.FrankaOSCPoseControllerMessage()
+        if not control_msg.control_msg.Unpack(osc_pose_msg):
+            raise ValueError("Failed to unpack OSC Pose Controller Message")
+
+        if self._cmd_metadata is None:
+            self._cmd_metadata = {
+                "controller_type": control_msg.controller_type,
+                "traj_interpolator_type": control_msg.traj_interpolator_type,
+                "traj_interpolator_time_fraction": control_msg.traj_interpolator_time_fraction,
+                "timeout": control_msg.timeout,
+                "is_delta": osc_pose_msg.goal.is_delta,
+                "translational_stiffness": osc_pose_msg.translational_stiffness,
+                "rotational_stiffness": osc_pose_msg.rotational_stiffness,
+            }
+            # print("Unpacked OSC Pose Controller Message:")
+            # print("Translational Stiffness:", osc_pose_msg.translational_stiffness)
+            # print("Rotational Stiffness:", osc_pose_msg.rotational_stiffness)
+            # print("Goal:", osc_pose_msg.goal)
+        # else:
+        #     raise ValueError("Failed to unpack OSC Pose Controller Message")
+
+        # elif control_msg.controller_type == franka_controller_pb2.FrankaControlMessage.ControllerType.JOINT_POSITION:
+        #     joint_position_msg = franka_controller_pb2.FrankaJointPositionControllerMessage()
+        #     if control_msg.control_msg.Unpack(joint_position_msg):
+        #         print("Unpacked Joint Position Controller Message:")
+        #         print("Joint Positions:", joint_position_msg.joint_positions)
+        #     else:
+        #         print("Failed to unpack Joint Position Controller Message")
+
+        # # Add more cases here for other controller types, if needed
+        # else:
+        #     print("Unknown controller type")
+
+        # # If there's a state estimator message, print it
+        # if control_msg.HasField("state_estimator_msg"):
+        #     print("State Estimator Type:", control_msg.state_estimator_msg.estimator_type)
+
+        # convert to action. Make sure to log if it is a delta action and the stiffnesses, and probably other stuff
+        action = osc_pose_goal_to_action(osc_pose_msg.goal)
+        return action
+
     def get_gripper_cmd(self):
         while True:
             try:
@@ -238,23 +331,23 @@ class FrankaInterface:
                     franka_controller_pb2.FrankaGripperControlMessage()
                 )
                 msg = self._gripper_cmd_subscriber.recv()
-                decoded_msg = decode_gripper_msg(msg)
+                decoded_msg = self.decode_gripper_msg(msg)
                 self._gripper_cmd_buffer.append(decoded_msg.width)
             except:
                 pass
 
     def decode_gripper_msg(self, msg):
         franka_gripper_cmd = franka_controller_pb2.FrankaGripperControlMessage()
-        franka_gripper_cmd.ParseFromString(message)
+        franka_gripper_cmd.ParseFromString(msg)
 
         # print("Decoded FrankaGripperControlMessage:", franka_gripper_cmd.control_msg)
 
         # Try to unpack as a FrankaGripperMoveMessage
         decoded_msg = franka_controller_pb2.FrankaGripperMoveMessage()
-        if not franka_gripper_cmd.control_msg.Unpack(move_msg):
+        if not franka_gripper_cmd.control_msg.Unpack(decoded_msg):
             # If not a move message, try to unpack as a FrankaGripperGraspMessage
             decoded_msg = franka_controller_pb2.FrankaGripperGraspMessage()
-            success = franka_gripper_cmd.control_msg.Unpack(grasp_msg)
+            success = franka_gripper_cmd.control_msg.Unpack(decoded_msg)
             if not success:
                 raise ValueError("Failed to unpack gripper command message for logging demo")
 
@@ -649,12 +742,13 @@ class FrankaInterface:
         self._gripper_buffer_idx = 0
 
         self._gripper_cmd_buffer = []
+        self._cmd_buffer = []
 
         self.counter = 0
         self.termination = False
 
         self.last_time = None
-        self.last_gripper_dim = -1
+        self.last_gripper_dim = None
         self.last_gripper_action = None
         self.last_gripper_command_counter = 0
         self._history_actions = []
