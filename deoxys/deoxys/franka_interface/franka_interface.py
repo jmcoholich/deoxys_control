@@ -2,6 +2,11 @@
 The default behavior of this class is to listen for state and send control messages.
 However, only one instance of this class can control the robot at a time. All others should pass the "no_control" flag to the constructor.
 If listening for commands is required, the "listen_cmds" flag should be set to True.
+
+Guide for FrankaRobotStateMessage:
+https://frankaemika.github.io/docs/franka_ros.html?highlight=o_t_ee
+https://frankaemika.github.io/libfranka/0.14.1/structfranka_1_1RobotState.html
+
 """
 
 import logging
@@ -700,6 +705,39 @@ class FrankaInterface:
         return np.array(self._state_buffer[-1].O_T_EE).reshape(4, 4).transpose()
 
     @property
+    def last_eef_pose_d(self) -> np.ndarray:
+        """_summary_
+
+        Returns:
+            np.ndarray: The 4x4 homogeneous matrix of DESIRED end effector pose.
+        """
+        if self.state_buffer_size == 0:
+            return None
+        return np.array(self._state_buffer[-1].O_T_EE_d).reshape(4, 4).transpose()
+
+    @property
+    def last_F_T_EE(self) -> np.ndarray:
+        """_summary_
+
+        Returns:
+            np.ndarray: The 4x4 homogeneous matrix of end effector pose in flange frame.
+        """
+        if self.state_buffer_size == 0:
+            return None
+        return np.array(self._state_buffer[-1].F_T_EE).reshape(4, 4).transpose()
+
+    @property
+    def last_F_T_NE(self) -> np.ndarray:
+        """_summary_
+
+        Returns:
+            np.ndarray: The 4x4 homogeneous matrix of nominal end effector pose in flange frame.
+        """
+        if self.state_buffer_size == 0:
+            return None
+        return np.array(self._state_buffer[-1].F_T_NE).reshape(4, 4).transpose()
+
+    @property
     def last_eef_rot_and_pos(self) -> Tuple[np.ndarray, np.ndarray]:
         """_summary_
 
@@ -764,6 +802,48 @@ class FrankaInterface:
         return np.array(self._state_buffer[-1].q)
 
     @property
+    def last_tau_J(self) -> np.ndarray:
+        if self.state_buffer_size == 0:
+            return None
+        return np.array(self._state_buffer[-1].tau_J)
+
+    @property
+    def last_cmd(self) -> np.ndarray:
+        if self.cmd_buffer_size == 0:
+            return None
+        return np.array(self._cmd_buffer[-1])
+
+    @property
+    def last_dtau_J(self) -> np.ndarray:
+        if self.state_buffer_size == 0:
+            return None
+        return np.array(self._state_buffer[-1].dtau_J)
+
+    @property
+    def last_tau_J_d(self) -> np.ndarray:
+        if self.state_buffer_size == 0:
+            return None
+        return np.array(self._state_buffer[-1].tau_J_d)
+
+    @property
+    def last_tau_ext_hat_filtered(self) -> np.ndarray:
+        if self.state_buffer_size == 0:
+            return None
+        return np.array(self._state_buffer[-1].tau_ext_hat_filtered)
+
+    @property
+    def last_dq_d(self) -> np.ndarray:
+        if self.state_buffer_size == 0:
+            return None
+        return np.array(self._state_buffer[-1].dq_d)
+
+    @property
+    def last_ddq_d(self) -> np.ndarray:
+        if self.state_buffer_size == 0:
+            return None
+        return np.array(self._state_buffer[-1].ddq_d)
+
+    @property
     def last_q_d(self) -> np.ndarray:
         if self.state_buffer_size == 0:
             return None
@@ -797,6 +877,10 @@ class FrankaInterface:
     @property
     def state_buffer_size(self) -> int:
         return len(self._state_buffer)
+
+    @property
+    def cmd_buffer_size(self) -> int:
+        return len(self._cmd_buffer)
 
     @property
     def gripper_state_buffer_size(self) -> int:
