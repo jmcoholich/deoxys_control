@@ -7,6 +7,9 @@ Guide for FrankaRobotStateMessage:
 https://frankaemika.github.io/docs/franka_ros.html?highlight=o_t_ee
 https://frankaemika.github.io/libfranka/0.14.1/structfranka_1_1RobotState.html
 
+Unfortunately, it doesn't look like FrankaGripperStateMessage has the commanded gripper width
+https://frankaemika.github.io/libfranka/0.14.1/structfranka_1_1GripperState.html#aa6733fa786dbf3b073acbaf3779e34b3
+
 """
 
 import logging
