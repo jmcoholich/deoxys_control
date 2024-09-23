@@ -54,6 +54,7 @@ def reset_joints_to(
             controller_type="JOINT_POSITION",
             action=action,
             controller_cfg=controller_cfg,
+            verbose=False,
         )
         end_time = time.time()
 

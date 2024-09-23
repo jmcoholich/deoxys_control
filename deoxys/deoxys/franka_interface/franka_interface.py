@@ -202,6 +202,7 @@ class FrankaInterface:
         self._state_sub_thread = threading.Thread(target=self.get_state)
         self._state_sub_thread.daemon = True
         self._state_sub_thread.start()
+        print("state thread started")
 
         self._gripper_sub_thread = threading.Thread(target=self.get_gripper_state)
         self._gripper_sub_thread.daemon = True
@@ -252,10 +253,11 @@ class FrankaInterface:
                 franka_robot_state = franka_robot_state_pb2.FrankaRobotStateMessage()
                 # message = self._subscriber.recv(flags=zmq.NOBLOCK)
                 message = self._subscriber.recv(**recv_kwargs)
+                # print(message)
                 franka_robot_state.ParseFromString(message)
                 self._state_buffer.append(franka_robot_state)
-            except:
-                pass
+                # print(f"state: \n{np.array(self._state_buffer[-1].O_T_EE_d)}")
+            except Exception as e: print(f"exception: {e}")
 
     def get_gripper_state(self):
         while True:
@@ -396,6 +398,7 @@ class FrankaInterface:
         action: Union[np.ndarray, list],
         controller_cfg: dict = None,
         termination: bool = False,
+        verbose: bool = True,
     ):
         """A function that controls every step on the policy level.
 
@@ -406,6 +409,7 @@ class FrankaInterface:
             termination (bool, optional): If set True, the control will be terminated. Defaults to False.
         """
         action = np.array(action)
+        # print(f"action: {action}")
         if self.last_time == None:
             self.last_time = time.time_ns()
         elif not termination:
@@ -436,11 +440,12 @@ class FrankaInterface:
         exponential_estimator.alpha_dq = controller_cfg.state_estimator_cfg.alpha_dq
         exponential_estimator.alpha_eef = controller_cfg.state_estimator_cfg.alpha_eef
         state_estimator_msg.config.Pack(exponential_estimator)
-        print("CONTROLLER_TYPE", controller_type)
-        print('is delta: ', controller_cfg.is_delta)
+        if verbose:
+            print("CONTROLLER_TYPE", controller_type)
+            print('is delta: ', controller_cfg.is_delta)
         if controller_type == "OSC_POSE":  # This is the controller type
             assert controller_cfg is not None
-
+            # breakpoint()
             osc_msg = franka_controller_pb2.FrankaOSCPoseControllerMessage()
             osc_msg.translational_stiffness[:] = controller_cfg.Kp.translation
             osc_msg.rotational_stiffness[:] = controller_cfg.Kp.rotation
@@ -473,6 +478,7 @@ class FrankaInterface:
             control_msg.termination = termination
 
             control_msg.state_estimator_msg.CopyFrom(state_estimator_msg)
+            # print(f"pose: {control_msg}")
 
             msg_str = control_msg.SerializeToString()
             self._publisher.send(msg_str)
@@ -556,7 +562,7 @@ class FrankaInterface:
 
             assert controller_cfg is not None
             assert len(action) == 7 + 1
-
+            # breakpoint()
             joint_pos_msg = franka_controller_pb2.FrankaJointPositionControllerMessage()
             joint_pos_msg.speed_factor = 0.1
             goal = action_to_joint_pos_goal(action, is_delta=controller_cfg.is_delta)
@@ -578,6 +584,7 @@ class FrankaInterface:
             control_msg.termination = termination
 
             control_msg.state_estimator_msg.CopyFrom(state_estimator_msg)
+            # print(f"joint: {control_msg}")
 
             msg_str = control_msg.SerializeToString()
             self._publisher.send(msg_str)
@@ -681,8 +688,8 @@ class FrankaInterface:
         elif action >= 0.0:  #  and self.last_gripper_action == 0:
             grasp_msg = franka_controller_pb2.FrankaGripperGraspMessage()
             grasp_msg.width = -0.01
-            grasp_msg.speed = 0.5
-            grasp_msg.force = 30.0
+            grasp_msg.speed = 0.1
+            grasp_msg.force = 0.025
             grasp_msg.epsilon_inner = 0.08
             grasp_msg.epsilon_outer = 0.08
 

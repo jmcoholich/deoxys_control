@@ -41,7 +41,7 @@ def compute_errors(pose_1, pose_2):
     return np.abs(np.array(pose_a) - np.array(pose_b))
 
 
-def osc_move(robot_interface, controller_type, controller_cfg, target_pose, num_steps):
+def osc_move(robot_interface, controller_type, controller_cfg, target_pose, num_steps, verbose=False):
     target_pos, target_quat = target_pose
     target_axis_angle = transform_utils.quat2axisangle(target_quat)
     current_rot, current_pos = robot_interface.last_eef_rot_and_pos
@@ -62,12 +62,14 @@ def osc_move(robot_interface, controller_type, controller_cfg, target_pose, num_
         action_axis_angle = np.clip(action_axis_angle, -0.5, 0.5)
 
         action = action_pos.tolist() + action_axis_angle.tolist() + [-1.0]
-        logger.info(f"Axis angle action {action_axis_angle.tolist()}")
+        if verbose:
+            logger.info(f"Axis angle action {action_axis_angle.tolist()}")
         # print(np.round(action, 2))
         robot_interface.control(
             controller_type=controller_type,
             action=action,
             controller_cfg=controller_cfg,
+            verbose=verbose,
         )
     return action
 
@@ -80,6 +82,7 @@ def move_to_target_pose(
     num_steps,
     num_additional_steps,
     interpolation_method,
+    verbose=True
 ):
     while robot_interface.state_buffer_size == 0:
         logger.warn("Robot state not received")
@@ -99,14 +102,16 @@ def move_to_target_pose(
 
     target_axis_angle = np.array(target_delta_axis_angle) + current_axis_angle
 
-    logger.info(f"Before conversion {target_axis_angle}")
+    if verbose:
+        logger.info(f"Before conversion {target_axis_angle}")
     target_quat = transform_utils.axisangle2quat(target_axis_angle)
     target_pose = target_pos.flatten().tolist() + target_quat.flatten().tolist()
 
     if np.dot(target_quat, current_quat) < 0.0:
         current_quat = -current_quat
     target_axis_angle = transform_utils.quat2axisangle(target_quat)
-    logger.info(f"After conversion {target_axis_angle}")
+    if verbose:
+        logger.info(f"After conversion {target_axis_angle}")
     current_axis_angle = transform_utils.quat2axisangle(current_quat)
 
     start_pose = current_pos.flatten().tolist() + current_quat.flatten().tolist()
@@ -117,6 +122,7 @@ def move_to_target_pose(
         controller_cfg,
         (target_pos, target_quat),
         num_steps,
+        verbose,
     )
     osc_move(
         robot_interface,
@@ -124,6 +130,7 @@ def move_to_target_pose(
         controller_cfg,
         (target_pos, target_quat),
         num_additional_steps,
+        verbose,
     )
 
 
