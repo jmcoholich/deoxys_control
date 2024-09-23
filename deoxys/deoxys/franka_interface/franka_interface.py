@@ -811,7 +811,7 @@ class FrankaInterface:
         return np.array(self._state_buffer[-1].tau_J)
 
     @property
-    def last_cmd(self) -> np.ndarray:
+    def last_arm_tcp_command(self) -> np.ndarray:
         if self.cmd_buffer_size == 0:
             return None
         return np.array(self._cmd_buffer[-1])
