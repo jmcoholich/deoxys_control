@@ -7,6 +7,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+from time import sleep
 
 from deoxys import config_root
 from deoxys.experimental.motion_utils import reset_joints_to
@@ -41,7 +42,31 @@ def compute_errors(pose_1, pose_2):
     return np.abs(np.array(pose_a) - np.array(pose_b))
 
 
-def osc_move(robot_interface, controller_type, controller_cfg, target_pose, num_steps):
+def deltas_move(robot_interface, controller_type, controller_cfg, deltas):
+    current_quat, current_pos = robot_interface.last_eef_quat_and_pos
+    target_pos = current_pos.flatten() + deltas[:3]
+    target_axisangle = np.array(transform_utils.quat2axisangle(current_quat)) + deltas[3:6]
+    # print(target_pose)
+    deltas[:3] = deltas[:3] / 0.05
+    robot_interface.control(
+            controller_type=controller_type,
+            action=deltas,
+            controller_cfg=controller_cfg,
+            verbose=False,
+        )
+
+    while True:
+        current_quat, current_pos = robot_interface.last_eef_quat_and_pos
+        current_axisangle = np.array(transform_utils.quat2axisangle(current_quat))
+
+        error = np.abs(current_pos.flatten() - target_pos).sum()
+        if error < 0.01:
+            print("Reached target")
+            break
+        sleep(0.1)
+
+
+def osc_move(robot_interface, controller_type, controller_cfg, target_pose, num_steps, verbose=False):
     target_pos, target_quat = target_pose
     target_axis_angle = transform_utils.quat2axisangle(target_quat)
     current_rot, current_pos = robot_interface.last_eef_rot_and_pos
@@ -62,8 +87,9 @@ def osc_move(robot_interface, controller_type, controller_cfg, target_pose, num_
         action_axis_angle = np.clip(action_axis_angle, -0.5, 0.5)
 
         action = action_pos.tolist() + action_axis_angle.tolist() + [-1.0]
-        logger.info(f"Axis angle action {action_axis_angle.tolist()}")
-        # print(np.round(action, 2))
+        if verbose:
+            logger.info(f"Axis angle action {action_axis_angle.tolist()}")
+            print(f"osc action: {np.round(action, 2)}")
         robot_interface.control(
             controller_type=controller_type,
             action=action,
@@ -80,6 +106,7 @@ def move_to_target_pose(
     num_steps,
     num_additional_steps,
     interpolation_method,
+    verbose=False,
 ):
     while robot_interface.state_buffer_size == 0:
         logger.warn("Robot state not received")
@@ -99,14 +126,17 @@ def move_to_target_pose(
 
     target_axis_angle = np.array(target_delta_axis_angle) + current_axis_angle
 
-    logger.info(f"Before conversion {target_axis_angle}")
+    if verbose:
+        logger.info(f"Before conversion {target_axis_angle}")
     target_quat = transform_utils.axisangle2quat(target_axis_angle)
     target_pose = target_pos.flatten().tolist() + target_quat.flatten().tolist()
 
     if np.dot(target_quat, current_quat) < 0.0:
         current_quat = -current_quat
     target_axis_angle = transform_utils.quat2axisangle(target_quat)
-    logger.info(f"After conversion {target_axis_angle}")
+
+    if verbose:
+        logger.info(f"After conversion {target_axis_angle}")
     current_axis_angle = transform_utils.quat2axisangle(current_quat)
 
     start_pose = current_pos.flatten().tolist() + current_quat.flatten().tolist()
@@ -117,6 +147,7 @@ def move_to_target_pose(
         controller_cfg,
         (target_pos, target_quat),
         num_steps,
+        verbose,
     )
     osc_move(
         robot_interface,
@@ -124,6 +155,7 @@ def move_to_target_pose(
         controller_cfg,
         (target_pos, target_quat),
         num_additional_steps,
+        verbose,
     )
 
 
