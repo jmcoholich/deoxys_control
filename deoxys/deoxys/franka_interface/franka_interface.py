@@ -396,6 +396,7 @@ class FrankaInterface:
         action: Union[np.ndarray, list],
         controller_cfg: dict = None,
         termination: bool = False,
+        verbose: bool = False,
     ):
         """A function that controls every step on the policy level.
 
@@ -405,6 +406,7 @@ class FrankaInterface:
             controller_cfg (dict, optional): Controller configuration that corresponds to the first argument`controller_type`. Defaults to None.
             termination (bool, optional): If set True, the control will be terminated. Defaults to False.
         """
+        print("moved")
         action = np.array(action)
         if self.last_time == None:
             self.last_time = time.time_ns()
@@ -416,6 +418,7 @@ class FrankaInterface:
             ) / (10**9)
             if 0.0001 < remaining_time < self._control_timeout:
                 time.sleep(remaining_time)
+                print("Slept for", remaining_time)
             self.last_time = time.time_ns()
 
         if self._last_controller_type != controller_type:
@@ -436,8 +439,9 @@ class FrankaInterface:
         exponential_estimator.alpha_dq = controller_cfg.state_estimator_cfg.alpha_dq
         exponential_estimator.alpha_eef = controller_cfg.state_estimator_cfg.alpha_eef
         state_estimator_msg.config.Pack(exponential_estimator)
-        print("CONTROLLER_TYPE", controller_type)
-        print('is delta: ', controller_cfg.is_delta)
+        if verbose:
+            print("CONTROLLER_TYPE", controller_type)
+            print('is delta: ', controller_cfg.is_delta)
         if controller_type == "OSC_POSE":  # This is the controller type
             assert controller_cfg is not None
 
@@ -794,6 +798,9 @@ class FrankaInterface:
         self.last_gripper_command_counter = 0
         self._history_actions = []
 
+    def clear_cmd_buffer(self):
+        self._cmd_buffer = []
+
     @property
     def received_states(self):
         return len(self._state_buffer) > 0
@@ -815,6 +822,9 @@ class FrankaInterface:
         if self.cmd_buffer_size == 0:
             return None
         return np.array(self._cmd_buffer[-1])
+    @property
+    def tcp_command_buffer(self) -> np.ndarray:
+        return np.array(self._cmd_buffer)
 
     @property
     def last_dtau_J(self) -> np.ndarray:
