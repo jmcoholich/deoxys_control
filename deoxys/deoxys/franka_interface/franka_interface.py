@@ -406,7 +406,6 @@ class FrankaInterface:
             controller_cfg (dict, optional): Controller configuration that corresponds to the first argument`controller_type`. Defaults to None.
             termination (bool, optional): If set True, the control will be terminated. Defaults to False.
         """
-        print("moved")
         action = np.array(action)
         if self.last_time == None:
             self.last_time = time.time_ns()
