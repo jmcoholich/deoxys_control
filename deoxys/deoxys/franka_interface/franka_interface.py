@@ -254,6 +254,8 @@ class FrankaInterface:
                 message = self._subscriber.recv(**recv_kwargs)
                 franka_robot_state.ParseFromString(message)
                 self._state_buffer.append(franka_robot_state)
+                # print with full precision
+                np.set_printoptions(precision=10)
             except:
                 pass
 
@@ -417,7 +419,7 @@ class FrankaInterface:
             ) / (10**9)
             if 0.0001 < remaining_time < self._control_timeout:
                 time.sleep(remaining_time)
-                print("Slept for", remaining_time)
+                # print("Slept for", remaining_time)
             self.last_time = time.time_ns()
 
         if self._last_controller_type != controller_type:
@@ -558,7 +560,7 @@ class FrankaInterface:
         elif controller_type == "JOINT_POSITION":
 
             assert controller_cfg is not None
-            assert len(action) == 7 + 1
+            # assert len(action) == 7
 
             joint_pos_msg = franka_controller_pb2.FrankaJointPositionControllerMessage()
             joint_pos_msg.speed_factor = 0.1
@@ -685,7 +687,7 @@ class FrankaInterface:
             grasp_msg = franka_controller_pb2.FrankaGripperGraspMessage()
             grasp_msg.width = -0.01
             grasp_msg.speed = 0.5
-            grasp_msg.force = 5.0  # 30
+            grasp_msg.force = 30.0  # 30
             grasp_msg.epsilon_inner = 0.08
             grasp_msg.epsilon_outer = 0.08
 
