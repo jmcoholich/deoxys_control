@@ -28,7 +28,6 @@ from deoxys.utils import transform_utils
 from deoxys.utils.config_utils import verify_controller_config
 from deoxys.utils.yaml_config import YamlConfig
 
-import random
 import socket
 
 logger = logging.getLogger(__name__)
@@ -455,7 +454,7 @@ class FrankaInterface:
             osc_config.residual_mass_vec[:] = controller_cfg.residual_mass_vec
             osc_msg.config.CopyFrom(osc_config)
             action[0:3] *= controller_cfg.action_scale.translation
-            action[3 : self.last_gripper_dim] *= controller_cfg.action_scale.rotation
+            action[3:] *= controller_cfg.action_scale.rotation
 
             logger.debug(f"OSC action: {np.round(action, 3)}")
 
