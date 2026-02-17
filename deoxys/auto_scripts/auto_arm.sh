@@ -2,37 +2,6 @@
 . $(dirname "$0")/color_variables.sh
 . $(dirname "$0")/fix_ld_issue.sh
 
-DEBUG_MODE="off"
-ENABLE_COREDUMP=1
-
-while [[ "$1" == --* ]]; do
-    case "$1" in
-        --gdb)
-            DEBUG_MODE="gdb"
-            shift
-            ;;
-        --gdb-bt)
-            DEBUG_MODE="gdb-bt"
-            shift
-            ;;
-        --no-coredump)
-            ENABLE_COREDUMP=0
-            shift
-            ;;
-        --)
-            shift
-            break
-            ;;
-        *)
-            break
-            ;;
-    esac
-done
-
-if [ "$ENABLE_COREDUMP" -eq 1 ]; then
-    ulimit -c unlimited 2>/dev/null
-fi
-
 printf "${BIRed} Make sure you are in the Performance Mode!!! ${Color_Off} \n"
 
 RTOS_MODE=$(cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor)
@@ -46,27 +15,27 @@ do
     fi
 done
 
-run_franka_interface() {
-    if [ "$DEBUG_MODE" = "gdb" ]; then
-        gdb --args bin/franka-interface "$@"
-    elif [ "$DEBUG_MODE" = "gdb-bt" ]; then
-        gdb -q -ex run -ex "bt" -ex "thread apply all bt" -ex quit --args bin/franka-interface "$@"
+EVAL_MODE=0
+FRANKA_ARGS=()
+
+for arg in "$@"
+do
+    if [ "$arg" = "--eval" ]; then
+        EVAL_MODE=1
     else
-        bin/franka-interface "$@"
+        FRANKA_ARGS+=("$arg")
     fi
-}
+done
 
 while true
 do
-    run_franka_interface "$@"
-    status=$?
-    if [ $status -ne 0 ]; then
-        echo "franka-interface exited with code $status; stopping auto-restart."
-        if [ "$ENABLE_COREDUMP" -eq 1 ]; then
-            echo "Core dumps enabled. If a core file exists, inspect with: gdb bin/franka-interface core"
-            echo "If no core file appears, try: coredumpctl info bin/franka-interface"
-        fi
-        exit $status
+
+    bin/franka-interface "${FRANKA_ARGS[@]}"
+
+    if [ "$EVAL_MODE" -eq 0 ]; then
+        printf "${BICyan}franka-interface exited. Press any key to resume...${Color_Off}\n"
+        read -r -n 1 -s
+        printf "\n"
     fi
-    sleep 1
+
 done
