@@ -38,4 +38,6 @@ do
         printf "\n"
     fi
 
+    sleep 0.1
+
 done
