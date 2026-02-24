@@ -737,6 +737,7 @@ def clip_translation(dpos, limit):
             - (np.array) Clipped translation (same dimension as inputs)
             - (bool) whether the value was clipped or not
     """
+    assert dpos.shape == (3,)
     input_norm = np.linalg.norm(dpos)
     return (dpos * limit / input_norm, True) if input_norm > limit else (dpos, False)
 
