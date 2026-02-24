@@ -589,7 +589,7 @@ class FrankaInterface:
         elif controller_type == "JOINT_IMPEDANCE":
 
             assert controller_cfg is not None
-            assert len(action) == 7 + 1
+            assert len(action) == 7
 
             joint_impedance_msg = (
                 franka_controller_pb2.FrankaJointImpedanceControllerMessage()
