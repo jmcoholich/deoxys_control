@@ -1,5 +1,6 @@
 from deoxys.franka_interface.franka_interface import FrankaInterface
 from deoxys.proto.franka_interface import franka_robot_state_pb2
+import time
 
 iface = FrankaInterface("/home/jeremiah/deoxys_control/deoxys/config/charmander.yml", no_control=True)
 
@@ -15,3 +16,4 @@ while True:
             print("mode:", franka_robot_state_pb2.FrankaRobotStateMessage.RobotMode.Name(st.robot_mode))
             print("current_errors:", cur)
             print("last_motion_errors:", last)
+    time.sleep(0.1)

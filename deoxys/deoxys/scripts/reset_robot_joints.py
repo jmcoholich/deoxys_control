@@ -27,6 +27,10 @@ def parse_args():
     parser.add_argument(
         "--folder", type=Path, default="data_collection_example/example_data"
     )
+    parser.add_argument(
+        "--eval", action="store_true", help="If passed, do not add small randomization to the reset joint position"
+    )
+
 
     args = parser.parse_args()
     return args
@@ -55,10 +59,11 @@ def main():
 
     # This is for varying initialization of joints a little bit to
     # increase data variation.
-    reset_joint_positions = [
-        e + np.clip(np.random.randn() * 0.005, -0.005, 0.005)
-        for e in reset_joint_positions
-    ]
+    if not args.eval:
+        reset_joint_positions = [
+            e + np.clip(np.random.randn() * 0.005, -0.005, 0.005)
+            for e in reset_joint_positions
+        ]
     action = reset_joint_positions + [-1.0]
 
     while True:
