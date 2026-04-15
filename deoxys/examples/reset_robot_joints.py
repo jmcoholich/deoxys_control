@@ -30,6 +30,9 @@ def parse_args():
     parser.add_argument(
         "--eval", action="store_true", help="If passed, do not add small randomization to the reset joint position"
     )
+    parser.add_argument(
+        "--side", action="store_true", help="If passed, reset to the sideways pose instead of the upright pose."
+    )
 
     args = parser.parse_args()
     return args
@@ -45,8 +48,7 @@ def main():
 
     controller_type = "JOINT_POSITION"
 
-    # Golden resetting joints
-    reset_joint_positions = [
+    upright_reset_joint_positions = [
         0.09162008114028396,
         -0.19826458111314524,
         -0.01990020486871322,
@@ -55,6 +57,16 @@ def main():
         2.30396583422025,
         0.8480939705504309,
     ]
+
+    sideways_reset_joint_positions = [
+        1.68851864,
+        -1.50437123,
+        -1.43575852,
+        -2.38550243,
+        -1.44988894,
+        1.54390245,
+        1.70557139,
+        ]
 
 #     # sim init joints
 #     sim_reset_joint_positions = [
@@ -69,7 +81,7 @@ def main():
 
 # [0.09134854709892941, -0.19751233787076516, -0.02011370671681021, -2.473725179404103, -0.013469636973619725, 2.303629700103731, 0.8484247158144911]
 
-
+    reset_joint_positions = sideways_reset_joint_positions if args.side else upright_reset_joint_positions
     # This is for varying initialization of joints a little bit to
     # increase data variation.
     if not args.eval:
