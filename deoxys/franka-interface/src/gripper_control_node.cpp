@@ -134,7 +134,7 @@ int main(int argc, char **argv) {
     // Main loop
     while (running) {
       if (executing) {
-        FrankaGripperStopMessage homing_msg;
+        FrankaGripperHomingMessage homing_msg;
         FrankaGripperMoveMessage move_msg;
         FrankaGripperGraspMessage grasp_msg;
         FrankaGripperStopMessage stop_msg;
