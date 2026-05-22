@@ -17,6 +17,50 @@ from deoxys.utils.log_utils import get_deoxys_example_logger
 
 logger = get_deoxys_example_logger()
 
+OPENTEACH_EXTRACTED_DATA_ROOT = Path("/home/jeremiah/openteach/extracted_data")
+
+
+def get_demo_history_path(demo_name):
+    demo_path = Path(demo_name).expanduser()
+    if demo_path.suffix == ".h5" or demo_path.exists():
+        return demo_path
+
+    return (
+        OPENTEACH_EXTRACTED_DATA_ROOT
+        / f"demonstration_{demo_name}"
+        / f"deoxys_obs_cmd_history_{demo_name}.h5"
+    )
+
+
+def get_last_demo_joint_position(demo_name):
+    import h5py
+
+    history_path = get_demo_history_path(demo_name)
+    if not history_path.exists():
+        raise FileNotFoundError(f"Demo history file not found: {history_path}")
+
+    with h5py.File(history_path, "r") as h5f:
+        if "joint_pos" not in h5f:
+            raise KeyError(f"Missing 'joint_pos' dataset in {history_path}")
+
+        joint_pos = h5f["joint_pos"]
+        if len(joint_pos) == 0:
+            raise ValueError(f"'joint_pos' dataset is empty in {history_path}")
+
+        reset_joint_positions = np.asarray(joint_pos[-1], dtype=float).reshape(-1)
+
+    if reset_joint_positions.shape != (7,):
+        raise ValueError(
+            f"Expected 7 joint positions in {history_path}, got shape "
+            f"{reset_joint_positions.shape}"
+        )
+
+    logger.info(
+        f"Resetting to last joint position from {history_path}: "
+        f"{np.round(reset_joint_positions, 3)}"
+    )
+    return reset_joint_positions.tolist()
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -35,6 +79,13 @@ def parse_args():
     )
     parser.add_argument(
         "--unplug", action="store_true", help="If passed, reset to the unplug pose."
+    )
+    parser.add_argument(
+        "--reset_to_last",
+        "--reset-to-last",
+        type=str,
+        default=None,
+        help="Reset to the last joint position from the named demo history h5.",
     )
 
     args = parser.parse_args()
@@ -85,9 +136,12 @@ def main():
 
 # [0.09134854709892941, -0.19751233787076516, -0.02011370671681021, -2.473725179404103, -0.013469636973619725, 2.303629700103731, 0.8484247158144911]
 
-    reset_joint_positions = sideways_reset_joint_positions if args.side else upright_reset_joint_positions
-    if args.unplug:
+    if args.reset_to_last is not None:
+        reset_joint_positions = get_last_demo_joint_position(args.reset_to_last)
+    elif args.unplug:
         reset_joint_positions = unplug_reset_joint_positions
+    else:
+        reset_joint_positions = sideways_reset_joint_positions if args.side else upright_reset_joint_positions
     # This is for varying initialization of joints a little bit to
     # increase data variation.
     if not args.eval:
