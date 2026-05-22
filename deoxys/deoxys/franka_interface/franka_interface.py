@@ -659,17 +659,6 @@ class FrankaInterface:
         if self.use_visualizer and len(self._state_buffer) > 0:
             self.visualizer.update(joint_positions=np.array(self._state_buffer[-1].q))
 
-    def gripper_stop(self):
-        """Stop the active gripper command."""
-        gripper_control_msg = franka_controller_pb2.FrankaGripperControlMessage()
-        stop_msg = franka_controller_pb2.FrankaGripperStopMessage()
-        stop_msg.stop = True
-        gripper_control_msg.control_msg.Pack(stop_msg)
-
-        logger.debug("Gripper stopping")
-
-        self._gripper_publisher.send(gripper_control_msg.SerializeToString())
-
     def gripper_control(self, action: float):
         """Control the gripper
 
@@ -685,9 +674,6 @@ class FrankaInterface:
         # TODO (Yifeng): Test if sending grasping or gripper directly
         # will stop executing the previous command
         if action < 0.0:  #  and self.last_gripper_action == 1):
-            if self.last_gripper_action is None or self.last_gripper_action >= 0.0:
-                self.gripper_stop()
-                time.sleep(0.02)
 
             move_msg = franka_controller_pb2.FrankaGripperMoveMessage()
             move_msg.width = 0.08 * np.abs(action)
