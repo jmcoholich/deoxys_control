@@ -1,6 +1,7 @@
 // Copyright 2022 Yifeng Zhu
 
 #include <atomic>
+#include <exception>
 #include <iostream>
 #include <mutex>
 #include <sstream>
@@ -80,42 +81,63 @@ int main(int argc, char **argv) {
     std::thread gripper_pub_thread([&]() {
       franka::GripperState current_gripper_state;
       while (running) {
-        if (gripper_state.mutex.try_lock()) {
-          gripper_state.state = gripper.readOnce();
-          current_gripper_state = gripper_state.state;
-          gripper_state.mutex.unlock();
-        }
+        try {
+          if (gripper_state.mutex.try_lock()) {
+            gripper_state.state = gripper.readOnce();
+            current_gripper_state = gripper_state.state;
+            gripper_state.mutex.unlock();
+          }
 
-        FrankaGripperStateMessage gripper_state_msg;
-        gripper_state_utils.LoadGripperStateToMsg(current_gripper_state,
-                                                  gripper_state_msg);
-        std::string serialized_gripper_state_msg;
-        gripper_state_msg.SerializeToString(&serialized_gripper_state_msg);
-        zmq_pub.send(serialized_gripper_state_msg);
-        std::this_thread::sleep_for(
-            std::chrono::milliseconds(static_cast<int>(1. / pub_rate * 1000)));
+          FrankaGripperStateMessage gripper_state_msg;
+          gripper_state_utils.LoadGripperStateToMsg(current_gripper_state,
+                                                    gripper_state_msg);
+          std::string serialized_gripper_state_msg;
+          gripper_state_msg.SerializeToString(&serialized_gripper_state_msg);
+          zmq_pub.send(serialized_gripper_state_msg);
+          std::this_thread::sleep_for(std::chrono::milliseconds(
+              static_cast<int>(1. / pub_rate * 1000)));
+        } catch (franka::Exception const &e) {
+          gripper_logger->error("Gripper state publisher error: {0}", e.what());
+          running = false;
+        } catch (std::exception const &e) {
+          gripper_logger->error("Gripper state publisher error: {0}", e.what());
+          running = false;
+        }
       }
     });
 
     // A gripper command subscribing thread, and send gripper stop command if
     // received the stop command
     std::thread gripper_sub_thread([&]() {
-      bool new_control_msg = false;
       while (running) {
         std::string msg;
-        msg = zmq_sub.recv(false);
+        msg = zmq_sub.recv(true);
+        if (msg.empty()) {
+          std::this_thread::sleep_for(std::chrono::milliseconds(1));
+          continue;
+        }
+
         FrankaGripperControlMessage control_msg;
         if (control_msg.ParseFromString(msg)) {
-          new_control_msg = true;
-          if (gripper_cmd.mutex.try_lock()) {
+          {
+            std::lock_guard<std::mutex> lock(gripper_cmd.mutex);
             gripper_cmd.control_msg = control_msg;
-            gripper_cmd.mutex.unlock();
           }
+        } else {
+          gripper_logger->warn("Failed to parse gripper control message");
+          continue;
         }
+
         auto gripper_control = control_msg.control_msg();
         FrankaGripperStopMessage stop_msg;
         if (gripper_control.UnpackTo(&stop_msg)) {
-          gripper.stop();
+          try {
+            gripper.stop();
+          } catch (franka::Exception const &e) {
+            gripper_logger->warn("Gripper stop returned error: {0}", e.what());
+          } catch (std::exception const &e) {
+            gripper_logger->warn("Gripper stop returned error: {0}", e.what());
+          }
         }
 
         // Decide if terminate or not
@@ -140,53 +162,70 @@ int main(int argc, char **argv) {
         FrankaGripperStopMessage stop_msg;
 
         FrankaGripperControlMessage last_control_msg;
-        if (gripper_cmd.mutex.try_lock()) {
+        {
+          std::lock_guard<std::mutex> lock(gripper_cmd.mutex);
           last_control_msg = gripper_cmd.control_msg;
-          gripper_cmd.mutex.unlock();
-        } else {
-          continue;
         }
 
         auto gripper_control = last_control_msg.control_msg();
-        if (gripper_control.UnpackTo(&homing_msg)) {
-          gripper.homing();
-          has_grasped = false;
-        } else if (gripper_control.UnpackTo(&move_msg)) {
-          gripper.move(move_msg.width(), move_msg.speed());
-          has_grasped = false;
-        } else if (gripper_control.UnpackTo(&grasp_msg)) {
-          if (has_grasped) {
-            continue;
-          }
-          double epsilon_inner, epsilon_outer;
-          if (grasp_msg.epsilon_inner() == 0. &&
-              grasp_msg.epsilon_outer() == 0.) {
-            // if not defined, we will keep epsilon high so that it won't get
-            // stuck
-            epsilon_inner = 0.08;
-            epsilon_outer = 0.08;
-          } else {
-            epsilon_inner = grasp_msg.epsilon_inner();
-            epsilon_outer = grasp_msg.epsilon_outer();
-          }
+        try {
+          if (gripper_control.UnpackTo(&homing_msg)) {
+            gripper.homing();
+            has_grasped = false;
+          } else if (gripper_control.UnpackTo(&move_msg)) {
+            gripper.move(move_msg.width(), move_msg.speed());
+            has_grasped = false;
+          } else if (gripper_control.UnpackTo(&grasp_msg)) {
+            if (!has_grasped) {
+              double epsilon_inner, epsilon_outer;
+              if (grasp_msg.epsilon_inner() == 0. &&
+                  grasp_msg.epsilon_outer() == 0.) {
+                // if not defined, we will keep epsilon high so that it won't get
+                // stuck
+                epsilon_inner = 0.08;
+                epsilon_outer = 0.08;
+              } else {
+                epsilon_inner = grasp_msg.epsilon_inner();
+                epsilon_outer = grasp_msg.epsilon_outer();
+              }
 
-          double force;
-          if (grasp_msg.force() == 0.) {
-            force = 2.0;
-          } else {
-            force = grasp_msg.force();
-          }
-          has_grasped = gripper.grasp(grasp_msg.width(), grasp_msg.speed(),
-                                      force, epsilon_inner, epsilon_outer);
+              double force;
+              if (grasp_msg.force() == 0.) {
+                force = 2.0;
+              } else {
+                force = grasp_msg.force();
+              }
+              has_grasped = gripper.grasp(grasp_msg.width(), grasp_msg.speed(),
+                                          force, epsilon_inner, epsilon_outer);
 
-          gripper_logger->info("Grasped? {0}", has_grasped);
-        } else if (gripper_control.UnpackTo(&stop_msg)) {
-          gripper.stop();
-          has_grasped = false;
-        } else {
-          gripper_logger->warn("Unpack failed");
+              gripper_logger->info("Grasped? {0}", has_grasped);
+            }
+          } else if (gripper_control.UnpackTo(&stop_msg)) {
+            // Stop is sent immediately from the subscriber thread so it can
+            // interrupt a blocking move/grasp command.
+            has_grasped = false;
+          } else {
+            gripper_logger->warn("Unpack failed");
+          }
+        } catch (franka::CommandException const &e) {
+          std::string error_msg = e.what();
+          if (error_msg.find("Command aborted") != std::string::npos) {
+            gripper_logger->info("Active gripper command stopped");
+            has_grasped = false;
+          } else {
+            gripper_logger->error(error_msg);
+            running = false;
+          }
+        } catch (franka::Exception const &e) {
+          gripper_logger->error(e.what());
+          running = false;
+        } catch (std::exception const &e) {
+          gripper_logger->error(e.what());
+          running = false;
         }
         executing = false;
+      } else {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
       }
     }
     gripper_sub_thread.join();
