@@ -686,7 +686,7 @@ class FrankaInterface:
         elif action >= 0.0:  #  and self.last_gripper_action == 0:
             grasp_msg = franka_controller_pb2.FrankaGripperGraspMessage()
             grasp_msg.width = -0.01
-            grasp_msg.speed = 0.5
+            grasp_msg.speed = 0.09  # setting it higher than this causes occasional gripper failures. 0.1 is the gripper's stated limit
             grasp_msg.force = 30.0  # 30
             grasp_msg.epsilon_inner = 0.08
             grasp_msg.epsilon_outer = 0.08

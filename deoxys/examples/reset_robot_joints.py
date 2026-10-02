@@ -163,7 +163,7 @@ def main():
                         - np.array(reset_joint_positions)
                     )
                 )
-                < 1e-3
+                < 5e-3
             ):
                 break
         robot_interface.control(
